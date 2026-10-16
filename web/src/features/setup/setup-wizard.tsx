@@ -48,7 +48,7 @@ import { CompleteStep } from './components/complete-step'
 import { DatabaseStep } from './components/database-step'
 import { StepNavigation } from './components/step-navigation'
 import { UsageModeStep } from './components/usage-mode-step'
-import type { SetupFormValues, SetupStatus } from './types'
+import type { DatabaseConfig, SetupFormValues, SetupStatus } from './types'
 
 const STEPS = [
   {
@@ -84,6 +84,8 @@ export function SetupWizard() {
 
   const [currentStep, setCurrentStep] = useState(0)
   const [setupStatus, setSetupStatus] = useState<SetupStatus | undefined>()
+  // Database config the user saved in this wizard session (before restart).
+  const [savedDb, setSavedDb] = useState<DatabaseConfig | null>(null)
 
   const form = useForm<SetupFormValues>({
     defaultValues: DEFAULT_FORM_VALUES,
@@ -190,9 +192,23 @@ export function SetupWizard() {
     }
   }, [setupStatus, form])
 
+  // True while the user saved a custom database config but the server has
+  // not been restarted yet — initializing now would write to SQLite instead.
+  const dbPending = Boolean(
+    savedDb &&
+      savedDb.databaseType !== 'sqlite' &&
+      setupStatus?.database_type?.toLowerCase() !== savedDb.databaseType
+  )
+
   const currentStepComponent = useMemo(() => {
     if (currentStep === 0) {
-      return <DatabaseStep status={setupStatus} />
+      return (
+        <DatabaseStep
+          status={setupStatus}
+          savedConfig={savedDb}
+          onSave={setSavedDb}
+        />
+      )
     }
     if (currentStep === 1) {
       return (
@@ -205,8 +221,15 @@ export function SetupWizard() {
     if (currentStep === 2) {
       return <UsageModeStep form={form} />
     }
-    return <CompleteStep status={setupStatus} values={watchedValues} />
-  }, [currentStep, setupStatus, form, watchedValues])
+    return (
+      <CompleteStep
+        status={setupStatus}
+        values={watchedValues}
+        dbPending={dbPending}
+        pendingDbType={savedDb?.databaseType}
+      />
+    )
+  }, [currentStep, setupStatus, form, watchedValues, savedDb, dbPending])
 
   const validateAdminStep = () => {
     if (setupStatus?.root_init) return true
@@ -259,6 +282,11 @@ export function SetupWizard() {
   }
 
   const handleNextStep = () => {
+    if (currentStep === 0) {
+      // Step 0: database config - already saved via the form's submit handler
+      setCurrentStep((step) => Math.min(step + 1, STEPS.length - 1))
+      return
+    }
     if (currentStep === 1 && !validateAdminStep()) return
     if (currentStep === 2 && !validateUsageModeStep()) return
 
@@ -270,6 +298,15 @@ export function SetupWizard() {
   }
 
   const handleSubmit = async () => {
+    if (dbPending) {
+      toast.error(
+        t(
+          'Please restart the server before initializing, so the chosen database is used.'
+        )
+      )
+      return
+    }
+
     const adminValid = validateAdminStep()
     const usageValid = validateUsageModeStep()
     if (!adminValid || !usageValid) return
@@ -392,6 +429,7 @@ export function SetupWizard() {
                 onNext={handleNextStep}
                 onSubmit={handleSubmit}
                 isSubmitting={mutation.isPending}
+                submitDisabled={dbPending}
               />
             </CardFooter>
           )}

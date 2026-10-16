@@ -1,5 +1,11 @@
 package common
 
+import (
+	"os"
+	"path/filepath"
+	"sync"
+)
+
 type DatabaseType string
 
 const (
@@ -39,6 +45,44 @@ func UsingMainDatabase(databaseType DatabaseType) bool {
 
 func UsingLogDatabase(databaseType DatabaseType) bool {
 	return logDatabaseType == databaseType
+}
+
+// DSNConfigPath returns the path to the persisted DSN config file.
+func DSNConfigPath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ".newapi-dsn"
+	}
+	return filepath.Join(filepath.Dir(exe), ".newapi-dsn")
+}
+
+// ReadDSNConfig reads the persisted DSN from the config file.
+// Returns empty string if the file doesn't exist or is unreadable.
+var readDSNOnce sync.Once
+var cachedDSN string
+
+// ReadDSNConfig reads the persisted DSN from the config file.
+// Results are cached after the first read.
+func ReadDSNConfig() string {
+	readDSNOnce.Do(func() {
+		data, err := os.ReadFile(DSNConfigPath())
+		if err == nil {
+			cachedDSN = string(data)
+		}
+	})
+	return cachedDSN
+}
+
+// SaveDSNConfig persists the DSN to the config file.
+func SaveDSNConfig(dsn string) error {
+	return os.WriteFile(DSNConfigPath(), []byte(dsn), 0o644)
+}
+
+// ClearDSNConfig removes the persisted DSN config file.
+func ClearDSNConfig() error {
+	readDSNOnce = sync.Once{}
+	cachedDSN = ""
+	return os.Remove(DSNConfigPath())
 }
 
 // SQLitePath is the DSN for the default SQLite database. It uses WAL journal

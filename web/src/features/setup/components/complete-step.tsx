@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 
 import type { SetupFormValues, SetupStatus } from '../types'
@@ -27,6 +28,10 @@ import type { SetupFormValues, SetupStatus } from '../types'
 interface CompleteStepProps {
   status?: SetupStatus
   values: SetupFormValues
+  /** True when a custom database was saved but the server has not restarted yet. */
+  dbPending?: boolean
+  /** The database type saved in the wizard, while a restart is pending. */
+  pendingDbType?: string
 }
 
 const USAGE_MODE_LABEL_KEYS: Record<SetupFormValues['usageMode'], string> = {
@@ -44,11 +49,21 @@ const DATABASE_VARIANT: Record<
   postgres: 'success',
 }
 
-export function CompleteStep({ status, values }: CompleteStepProps) {
+export function CompleteStep({
+  status,
+  values,
+  dbPending,
+  pendingDbType,
+}: CompleteStepProps) {
   const { t } = useTranslation()
   const usageLabelKey = USAGE_MODE_LABEL_KEYS[values.usageMode]
-  const dbType = status?.database_type ?? 'Unknown'
-  const databaseVariant = DATABASE_VARIANT[dbType.toLowerCase()] ?? 'neutral'
+  // While a saved custom database is pending a restart, show that type;
+  // otherwise show the live connection type.
+  const dbType = (
+    (dbPending ? pendingDbType : status?.database_type) ?? 'Unknown'
+  ).toUpperCase()
+  const databaseVariant =
+    DATABASE_VARIANT[dbType.toLowerCase()] ?? 'neutral'
 
   return (
     <div className='flex flex-col items-center gap-6 text-center'>
@@ -105,6 +120,20 @@ export function CompleteStep({ status, values }: CompleteStepProps) {
           </div>
         </dl>
       </div>
+
+      {dbPending && (
+        <Alert className='border-amber-200 bg-amber-50 text-left dark:border-amber-900/60 dark:bg-amber-950/40'>
+          <AlertTitle className='flex items-center gap-2'>
+            <AlertTriangle className='size-4 text-amber-500' />
+            {t('Restart required')}
+          </AlertTitle>
+          <AlertDescription>
+            {t(
+              'The selected database will only be used after a server restart. Stop the server, start it again, and come back to this page to finish initialization.'
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
     </div>
   )
 }

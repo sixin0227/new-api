@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -14,6 +16,11 @@ type Setup struct {
 	Status       bool   `json:"status"`
 	RootInit     bool   `json:"root_init"`
 	DatabaseType string `json:"database_type"`
+	// CustomDB is true when the database was explicitly configured via the
+	// SQL_DSN env var or the persisted config file. When false the system is
+	// running on the built-in default SQLite and the setup wizard may offer
+	// a database configuration form.
+	CustomDB bool `json:"custom_database"`
 }
 
 type SetupRequest struct {
@@ -22,6 +29,70 @@ type SetupRequest struct {
 	ConfirmPassword    string `json:"confirmPassword"`
 	SelfUseModeEnabled bool   `json:"SelfUseModeEnabled"`
 	DemoSiteEnabled    bool   `json:"DemoSiteEnabled"`
+}
+
+type DatabaseConfigRequest struct {
+	DatabaseType string `json:"databaseType"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	Database     string `json:"database"`
+}
+
+// SaveDatabaseConfig persists the database configuration to a config file.
+// The new configuration will take effect on next server restart.
+func SaveDatabaseConfig(c *gin.Context) {
+	if constant.Setup {
+		common.ApiErrorT(c, "The system is already initialized")
+		return
+	}
+
+	var req DatabaseConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+
+	if req.DatabaseType == "" || req.Database == "" {
+		common.ApiErrorT(c, "Database type and name are required")
+		return
+	}
+
+	dsn := buildDSN(req)
+	if dsn == "" {
+		common.ApiErrorT(c, "Failed to build database connection string")
+		return
+	}
+
+	if err := common.SaveDSNConfig(dsn); err != nil {
+		common.ApiErrorT(c, "Failed to save database configuration: {{error}}", map[string]any{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"success": true,
+		"data":    gin.H{"databaseType": req.DatabaseType},
+	})
+}
+
+func buildDSN(req DatabaseConfigRequest) string {
+	switch req.DatabaseType {
+	case "mysql":
+		if req.Port == 0 {
+			req.Port = 3306
+		}
+		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+			req.Username, req.Password, req.Host, req.Port, req.Database)
+	case "postgres":
+		if req.Port == 0 {
+			req.Port = 5432
+		}
+		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&connect_timeout=10",
+			req.Username, req.Password, req.Host, req.Port, req.Database)
+	default:
+		return ""
+	}
 }
 
 func GetSetup(c *gin.Context) {
@@ -37,6 +108,7 @@ func GetSetup(c *gin.Context) {
 	}
 	setup.RootInit = model.RootUserExists()
 	setup.DatabaseType = string(common.MainDatabaseType())
+	setup.CustomDB = os.Getenv("SQL_DSN") != "" || common.ReadDSNConfig() != ""
 	c.JSON(200, gin.H{
 		"success": true,
 		"data":    setup,

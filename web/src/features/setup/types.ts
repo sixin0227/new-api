@@ -17,11 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 export type SetupUsageMode = 'external' | 'self' | 'demo'
+export type DatabaseType = 'sqlite' | 'mysql' | 'postgres'
 
 export interface SetupStatus {
   status: boolean
   root_init: boolean
   database_type: string
+  // custom_database is true when SQL_DSN or a persisted config file is set.
+  custom_database?: boolean
   // Some backends also echo mode flags; they are optional here.
   SelfUseModeEnabled?: boolean
   DemoSiteEnabled?: boolean
@@ -34,8 +37,23 @@ export interface SetupFormValues {
   usageMode: SetupUsageMode
 }
 
+export interface DatabaseConfig {
+  databaseType: DatabaseType
+  host: string
+  port: number
+  username: string
+  password: string
+  database: string
+}
+
 export interface SetupResponse {
   success: boolean
   message?: string
   data?: SetupStatus
+}
+
+export interface SaveDatabaseConfigResponse {
+  success: boolean
+  message?: string
+  data?: { databaseType: string }
 }

@@ -177,6 +177,36 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 		db, err := gorm.Open(mysqlMigrationDialector{mysql.Dialector{Config: &mysql.Config{DSN: dsn}}}, newGormConfig(true))
 		return db, common.DatabaseTypeMySQL, err
 	}
+	// Fall back to persisted DSN config file (written via setup wizard)
+	if !isLog {
+		if persisted := common.ReadDSNConfig(); persisted != "" {
+			common.SysLog(common.LogText("using persisted database configuration from config file"))
+			pdsn := persisted
+			if strings.HasPrefix(pdsn, "postgres://") || strings.HasPrefix(pdsn, "postgresql://") {
+				common.SysLog(common.LogText("using PostgreSQL as database"))
+				db, err := gorm.Open(postgresMigrationDialector{postgres.Dialector{Config: &postgres.Config{
+					DSN:                  pdsn,
+					PreferSimpleProtocol: true,
+				}}}, newGormConfig(false))
+				return db, common.DatabaseTypePostgreSQL, err
+			}
+			if strings.HasPrefix(pdsn, "local") {
+				common.SysLog(common.LogText("using SQLite as database (persisted config)"))
+				db, err := gorm.Open(sqlite.Open(common.SQLitePath), newGormConfig(true))
+				return db, common.DatabaseTypeSQLite, err
+			}
+			common.SysLog(common.LogText("using MySQL as database (persisted config)"))
+			if !strings.Contains(pdsn, "parseTime") {
+				if strings.Contains(pdsn, "?") {
+					pdsn += "&parseTime=true"
+				} else {
+					pdsn += "?parseTime=true"
+				}
+			}
+			db, err := gorm.Open(mysqlMigrationDialector{mysql.Dialector{Config: &mysql.Config{DSN: pdsn}}}, newGormConfig(true))
+			return db, common.DatabaseTypeMySQL, err
+		}
+	}
 	// Use SQLite
 	common.SysLog(common.LogText("SQL_DSN not set, using SQLite as database"))
 	db, err := gorm.Open(sqlite.Open(common.SQLitePath), newGormConfig(true))
@@ -352,6 +382,7 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
+		&RequestBody{},
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -408,7 +439,7 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return LOG_DB.AutoMigrate(&Log{})
+	return LOG_DB.AutoMigrate(&Log{}, &RequestBody{})
 }
 
 func migrateClickHouseLogDB() error {
@@ -416,7 +447,16 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
-	return syncClickHouseLogTTL(ttlDays)
+	if err := LOG_DB.Exec(clickHouseRequestBodyCreateTableSQL(ttlDays)).Error; err != nil {
+		return err
+	}
+	if err := ensureClickHouseRequestBodyColumns(); err != nil {
+		return err
+	}
+	if err := syncClickHouseLogTTL(ttlDays); err != nil {
+		return err
+	}
+	return syncClickHouseRequestBodyTTL(ttlDays)
 }
 
 func clickHouseLogTTLDays() int {
@@ -469,6 +509,66 @@ CREATE TABLE IF NOT EXISTS logs (
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(toDateTime(created_at))
 ORDER BY (created_at, request_id)%s`, clickHouseLogTTLClause(ttlDays))
+}
+
+func clickHouseRequestBodyCreateTableSQL(ttlDays int) string {
+	return fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS request_bodies (
+	id Int64 DEFAULT 0,
+	request_id String DEFAULT '',
+	user_id Int32 DEFAULT 0,
+	created_at Int64 DEFAULT 0,
+	model String DEFAULT '',
+	request_preview String DEFAULT '',
+	response_preview String DEFAULT '',
+	request_body String DEFAULT '',
+	response_body String DEFAULT '',
+	request_skipped UInt8 DEFAULT 0,
+	response_skipped UInt8 DEFAULT 0
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(toDateTime(created_at))
+ORDER BY (created_at, request_id)%s`, clickHouseLogTTLClause(ttlDays))
+}
+
+// ensureClickHouseRequestBodyColumns upgrades a request_bodies table created
+// before the summary columns existed. ClickHouse CREATE TABLE IF NOT EXISTS
+// leaves existing tables untouched, so new columns need explicit ALTERs.
+func ensureClickHouseRequestBodyColumns() error {
+	for _, column := range []string{
+		"model String DEFAULT ''",
+		"request_preview String DEFAULT ''",
+		"response_preview String DEFAULT ''",
+	} {
+		if err := LOG_DB.Exec("ALTER TABLE request_bodies ADD COLUMN IF NOT EXISTS " + column).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func syncClickHouseRequestBodyTTL(ttlDays int) error {
+	expression := clickHouseLogTTLExpression(ttlDays)
+	if expression != "" {
+		return LOG_DB.Exec("ALTER TABLE request_bodies MODIFY TTL " + expression).Error
+	}
+
+	hasTTL, err := clickHouseRequestBodyTableHasTTL()
+	if err != nil {
+		return err
+	}
+	if !hasTTL {
+		return nil
+	}
+	return LOG_DB.Exec("ALTER TABLE request_bodies REMOVE TTL").Error
+}
+
+func clickHouseRequestBodyTableHasTTL() (bool, error) {
+	var createTableSQL string
+	if err := LOG_DB.Raw("SHOW CREATE TABLE request_bodies").Scan(&createTableSQL).Error; err != nil {
+		return false, err
+	}
+	return clickHouseCreateTableHasTTL(createTableSQL), nil
 }
 
 func syncClickHouseLogTTL(ttlDays int) error {

@@ -18,7 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import type { SetupFormValues, SetupResponse } from './types'
+import type {
+  DatabaseConfig,
+  SaveDatabaseConfigResponse,
+  SetupFormValues,
+  SetupResponse,
+} from './types'
 
 export async function getSetupStatus(): Promise<SetupResponse> {
   const res = await api.get('/api/setup', {
@@ -34,6 +39,13 @@ export async function submitSetup(
   payload: Record<string, unknown>
 ): Promise<SetupResponse> {
   const res = await api.post('/api/setup', payload)
+  return res.data
+}
+
+export async function saveDatabaseConfig(
+  config: DatabaseConfig
+): Promise<SaveDatabaseConfigResponse> {
+  const res = await api.post('/api/setup/database', config)
   return res.data
 }
 

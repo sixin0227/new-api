@@ -28,6 +28,7 @@ interface StepNavigationProps {
   onNext: () => void
   onSubmit: () => void
   isSubmitting?: boolean
+  submitDisabled?: boolean
 }
 
 export function StepNavigation({
@@ -37,6 +38,7 @@ export function StepNavigation({
   onNext,
   onSubmit,
   isSubmitting = false,
+  submitDisabled = false,
 }: StepNavigationProps) {
   const { t } = useTranslation()
   const isFirstStep = currentStep === 0
@@ -60,7 +62,11 @@ export function StepNavigation({
         )}
 
         {isLastStep && (
-          <Button type='button' onClick={onSubmit} disabled={isSubmitting}>
+          <Button
+            type='button'
+            onClick={onSubmit}
+            disabled={isSubmitting || submitDisabled}
+          >
             {isSubmitting ? (
               <>
                 <Loader2 className='mr-2 size-4 animate-spin' />
