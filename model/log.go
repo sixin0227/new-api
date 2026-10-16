@@ -318,6 +318,8 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	err := createLog(log)
 	if err != nil {
 		logger.LogError(c, common.LogText("failed to record log: %s", err.Error()))
+	} else {
+		PersistRequestBodies(c, requestId, userId)
 	}
 }
 
@@ -384,6 +386,8 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	err := createLog(log)
 	if err != nil {
 		logger.LogError(c, common.LogText("failed to record log: %s", err.Error()))
+	} else {
+		PersistRequestBodies(c, requestId, userId)
 	}
 	if common.DataExportEnabled {
 		LogQuotaData(QuotaDataLogParams{
@@ -465,7 +469,9 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 }
 
 // LogFilter is the usage-log search shared by the log list and the log export.
-// Username and Channel are administrator filters.
+// Username and Channel are administrator filters. ReqBodyContains and
+// RespBodyContains search recorded bodies in request_bodies and are paired
+// with a time range by the callers.
 type LogFilter struct {
 	Type              int
 	StartTimestamp    int64
@@ -477,6 +483,8 @@ type LogFilter struct {
 	Group             string
 	RequestId         string
 	UpstreamRequestId string
+	ReqBodyContains   string
+	RespBodyContains  string
 }
 
 func (f LogFilter) apply(tx *gorm.DB) (*gorm.DB, error) {
@@ -510,6 +518,14 @@ func (f LogFilter) apply(tx *gorm.DB) (*gorm.DB, error) {
 	}
 	if f.Group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", f.Group)
+	}
+	if f.ReqBodyContains != "" {
+		subquery, pattern := RequestBodySearchSubquery("request_bodies.request_body", f.ReqBodyContains)
+		tx = tx.Where(subquery, pattern)
+	}
+	if f.RespBodyContains != "" {
+		subquery, pattern := RequestBodySearchSubquery("request_bodies.response_body", f.RespBodyContains)
+		tx = tx.Where(subquery, pattern)
 	}
 	return tx, nil
 }
@@ -794,12 +810,18 @@ func DeleteOldLogBatch(ctx context.Context, targetTimestamp int64, limit int) (i
 		).Error; err != nil {
 			return 0, err
 		}
+		if _, err := DeleteOldBodiesBatch(ctx, targetTimestamp, limit); err != nil {
+			return 0, err
+		}
 		return total, nil
 	}
 
 	result := LOG_DB.WithContext(ctx).Where("created_at < ?", targetTimestamp).Limit(limit).Delete(&Log{})
 	if nil != result.Error {
 		return 0, result.Error
+	}
+	if _, err := DeleteOldBodiesBatch(ctx, targetTimestamp, limit); err != nil {
+		return result.RowsAffected, err
 	}
 	return result.RowsAffected, nil
 }
