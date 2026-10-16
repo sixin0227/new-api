@@ -149,6 +149,115 @@ export async function getUserInfo(
   return res.data
 }
 
+export interface RequestBodiesData {
+  request_body: string
+  response_body: string
+  request_skipped: boolean
+  response_skipped: boolean
+}
+
+export interface RequestBodiesResponse {
+  success: boolean
+  message?: string
+  data?: RequestBodiesData
+}
+
+/** Recorded request/response bodies of one relay exchange (admin only). */
+export const getRequestBody = (requestId: string) =>
+  api.get<RequestBodiesResponse>(
+    `/api/log/body?request_id=${encodeURIComponent(requestId)}`
+  )
+
+/** Bulk-delete whole usage-log entries (metadata and recorded bodies). */
+export const batchDeleteLogs = (ids: number[]) =>
+  api.post<{ success: boolean; message?: string; data?: { deleted: number } }>(
+    '/api/log/batch-delete',
+    { ids }
+  )
+
+// ============================================================================
+// Request Body Browser APIs (admin only)
+// ============================================================================
+
+export interface RequestBodyListItem {
+  id: number
+  request_id: string
+  user_id: number
+  username: string
+  created_at: number
+  model: string
+  has_log_metadata: boolean
+  channel_id: number
+  channel_name: string
+  token_name: string
+  is_stream: boolean
+  prompt_tokens: number
+  completion_tokens: number
+  use_time: number
+  request_preview: string
+  response_preview: string
+  request_body: string
+  response_body: string
+  request_skipped: boolean
+  response_skipped: boolean
+}
+
+export interface GetRequestBodiesParams {
+  p?: number
+  page_size?: number
+  start_timestamp?: number
+  end_timestamp?: number
+  contains?: string
+  user_id?: number
+}
+
+export interface RequestBodiesListResponse {
+  success: boolean
+  message?: string
+  data?: {
+    items: RequestBodyListItem[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
+/** List recorded bodies with their summaries and full payloads (admin only). */
+export const getRequestBodiesList = (params: GetRequestBodiesParams = {}) =>
+  api.get<RequestBodiesListResponse>(
+    `/api/log/bodies?${buildQueryParams(params as unknown as Record<string, unknown>)}`
+  )
+
+/** Load the full recorded bodies for the selected exchanges (admin only). */
+export const exportRequestBodies = (requestIds: string[]) =>
+  api.post<{ success: boolean; message?: string; data?: { items: unknown[] } }>(
+    '/api/log/bodies/export',
+    { request_ids: requestIds }
+  )
+
+/** Delete the selected exchanges' bodies and their usage-log rows. */
+export const deleteRequestBodies = (requestIds: string[]) =>
+  api.post<{ success: boolean; message?: string; data?: { deleted: number } }>(
+    '/api/log/bodies/delete',
+    { request_ids: requestIds }
+  )
+
+export interface DeleteAllRequestBodiesFilters {
+  contains?: string
+  user_id?: number
+  start_timestamp?: number
+  end_timestamp?: number
+}
+
+/** Delete every recorded exchange matching the browse filters (admin only). */
+export const deleteAllRequestBodies = (
+  filters: DeleteAllRequestBodiesFilters
+) =>
+  api.post<{ success: boolean; message?: string; data?: { deleted: number } }>(
+    '/api/log/bodies/delete-all',
+    filters
+  )
+
 // ============================================================================
 // MjProxy (Drawing) Logs API
 // ============================================================================

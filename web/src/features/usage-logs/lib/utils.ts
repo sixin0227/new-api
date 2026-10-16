@@ -199,6 +199,12 @@ export function buildApiParams(config: {
     ...(searchParams.upstreamRequestId
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
+    ...(isAdmin && searchParams.reqBody
+      ? { req_body_contains: String(searchParams.reqBody) }
+      : {}),
+    ...(isAdmin && searchParams.respBody
+      ? { resp_body_contains: String(searchParams.respBody) }
+      : {}),
     ...buildTimeRangeParams(searchParams, false),
   }
 

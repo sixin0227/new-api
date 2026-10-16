@@ -129,7 +129,9 @@ function renderPreview(other: LogOtherData, isAdmin = true, type?: number) {
       </QueryClientProvider>
     </I18nextProvider>
   )
-  return screen.getByRole('button', { name: /./ })
+  // The content cell may render a second action button (the body viewer)
+  // after the preview trigger, so address the preview trigger by position.
+  return screen.getAllByRole('button', { name: /./ })[0]
 }
 
 test('keeps log details open when the parent refreshes with unchanged data', async () => {

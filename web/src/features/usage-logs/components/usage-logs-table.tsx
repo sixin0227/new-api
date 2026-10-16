@@ -216,7 +216,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       viewAccess
     ),
     pagination,
-    enableRowSelection: false,
+    enableRowSelection: isAdmin && logCategory === 'common',
     onPaginationChange,
     onColumnFiltersChange,
     manualPagination: true,

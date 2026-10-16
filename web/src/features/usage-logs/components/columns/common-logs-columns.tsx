@@ -74,6 +74,7 @@ import {
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
+import { RequestBodyButton } from '../dialogs/request-body-dialog'
 import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
@@ -883,6 +884,9 @@ export function useCommonLogsColumns(
                 open={dialogOpen}
                 onOpenChange={setDialogOpen}
               />
+              {isAdmin && log.request_id && (
+                <RequestBodyButton requestId={log.request_id} />
+              )}
             </>
           )
         },

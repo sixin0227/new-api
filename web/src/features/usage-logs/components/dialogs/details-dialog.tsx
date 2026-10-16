@@ -49,7 +49,9 @@ import {
   UserCog,
   Info,
   LogIn,
+  MessageSquareText,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -94,6 +96,7 @@ import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { ResponseModelDetails } from '../model-badge'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { DetailRow, DetailSection } from './log-detail-layout'
+import { RequestBodyDialog } from './request-body-dialog'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -480,6 +483,7 @@ interface DetailsDialogProps {
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
+  const [bodyDialogOpen, setBodyDialogOpen] = useState(false)
   const other = parseLogOther(props.log.other)
   const typeConfig = getLogTypeConfig(props.log.type)
 
@@ -628,9 +632,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
   )
 
   return (
-    <Dialog
-      open={props.open}
-      onOpenChange={props.onOpenChange}
+    <>
+      <Dialog
+        open={props.open}
+        onOpenChange={props.onOpenChange}
       title={
         <>
           {t('Log Details')}
@@ -663,6 +668,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
               value={props.log.request_id}
               mono
             />
+          )}
+          {props.isAdmin && props.log.request_id && (
+            <div className='pt-0.5'>
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-6 px-2 text-xs'
+                onClick={() => setBodyDialogOpen(true)}
+              >
+                <MessageSquareText className='size-3' aria-hidden='true' />
+                {t('View request & response bodies')}
+              </Button>
+            </div>
           )}
           {props.log.upstream_request_id && (
             <DetailRow
@@ -1369,7 +1387,15 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </div>
         )}
       </div>
-    </Dialog>
+      </Dialog>
+      {props.isAdmin && props.log.request_id && (
+        <RequestBodyDialog
+          requestId={props.log.request_id}
+          open={bodyDialogOpen}
+          onOpenChange={setBodyDialogOpen}
+        />
+      )}
+    </>
   )
 }
 

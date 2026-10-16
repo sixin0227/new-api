@@ -50,6 +50,7 @@ import { getDefaultTimeRange } from '../lib/utils'
 import type { CommonLogFilters } from '../types'
 import { CommonLogsStats } from './common-logs-stats'
 import { CompactDateTimeRangePicker } from './compact-date-time-range-picker'
+import { BatchDeleteLogsDialog } from './dialogs/batch-delete-logs-dialog'
 import { ExportLogsDialog } from './dialogs/export-logs-dialog'
 import {
   LogsFilterField,
@@ -94,6 +95,8 @@ function buildSearchSourceKey(values: {
   username?: unknown
   requestId?: unknown
   upstreamRequestId?: unknown
+  reqBody?: unknown
+  respBody?: unknown
   type?: unknown
 }) {
   return [
@@ -106,6 +109,8 @@ function buildSearchSourceKey(values: {
     values.username,
     values.requestId,
     values.upstreamRequestId,
+    values.reqBody,
+    values.respBody,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
   ]
     .map((value) => String(value ?? ''))
@@ -158,6 +163,8 @@ export function CommonLogsFilterBar<TData>(
       username: searchParams.username,
       requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
+      reqBody: searchParams.reqBody,
+      respBody: searchParams.respBody,
       type: searchParams.type,
     }
     const filters: CommonLogFilters = {
@@ -172,6 +179,8 @@ export function CommonLogsFilterBar<TData>(
       username: searchParams.username || undefined,
       requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
+      reqBody: searchParams.reqBody || undefined,
+      respBody: searchParams.respBody || undefined,
     }
     return {
       sourceKey: buildSearchSourceKey(sourceValues),
@@ -188,6 +197,8 @@ export function CommonLogsFilterBar<TData>(
     searchParams.username,
     searchParams.requestId,
     searchParams.upstreamRequestId,
+    searchParams.reqBody,
+    searchParams.respBody,
     searchParams.type,
   ])
   const [draft, setDraft] = useState<CommonLogDraft>(() => searchState)
@@ -267,7 +278,9 @@ export function CommonLogsFilterBar<TData>(
     !!filters.username ||
     !!filters.channel ||
     !!filters.requestId ||
-    !!filters.upstreamRequestId
+    !!filters.upstreamRequestId ||
+    !!filters.reqBody ||
+    !!filters.respBody
 
   const hasTypeFilter = logType !== LOG_TYPE_ALL_VALUE
   const hasAdditionalFilters =
@@ -279,6 +292,8 @@ export function CommonLogsFilterBar<TData>(
     isAdmin ? filters.channel : undefined,
     filters.requestId,
     filters.upstreamRequestId,
+    isAdmin ? filters.reqBody : undefined,
+    isAdmin ? filters.respBody : undefined,
   ].filter(Boolean).length
   const sensitiveInputClass = sensitiveVisible
     ? undefined
@@ -481,6 +496,28 @@ export function CommonLogsFilterBar<TData>(
           onKeyDown={handleKeyDown}
         />
       </LogsFilterField>
+      {isAdmin && (
+        <>
+          <LogsFilterField>
+            <LogsFilterInput
+              placeholder={t('Request body contains')}
+              className={sensitiveInputClass}
+              value={filters.reqBody || ''}
+              onChange={(e) => handleChange('reqBody', e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+          </LogsFilterField>
+          <LogsFilterField>
+            <LogsFilterInput
+              placeholder={t('Response body contains')}
+              className={sensitiveInputClass}
+              value={filters.respBody || ''}
+              onChange={(e) => handleChange('respBody', e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+          </LogsFilterField>
+        </>
+      )}
     </>
   )
 
@@ -490,7 +527,12 @@ export function CommonLogsFilterBar<TData>(
       compactMobile
       stats={statsBar}
       actionStart={sensitiveToggle}
-      actionEnd={<ExportLogsDialog />}
+      actionEnd={
+        <>
+          {isAdmin && <BatchDeleteLogsDialog table={props.table} />}
+          <ExportLogsDialog />
+        </>
+      }
       primaryFilters={
         <>
           {dateRangeFilter}

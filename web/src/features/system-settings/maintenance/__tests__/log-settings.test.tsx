@@ -44,6 +44,8 @@ function Fixture() {
             LogConsumeEnabled: true,
             'log_setting.user_export_enabled': true,
             'log_setting.max_range_days': 30,
+            'log_setting.record_body_enabled': false,
+            'log_setting.record_body_max_bytes': 1048576,
           }}
         />
       </SettingsPageProvider>
@@ -78,7 +80,7 @@ beforeEach(() => {
   vi.spyOn(api, 'put').mockResolvedValue({ data: { success: true } })
 })
 
-test('the page shows the four log modules in order, each with its own controls', async () => {
+test('the page shows the five log modules in order, each with its own controls', async () => {
   await renderSettings()
 
   expect(
@@ -86,6 +88,7 @@ test('the page shows the four log modules in order, each with its own controls',
   ).toEqual([
     'Log recording',
     'Log search and export',
+    'Body Recording',
     'Clean history logs',
     'Server Log Management',
   ])
@@ -101,6 +104,17 @@ test('the page shows the four log modules in order, each with its own controls',
   expect(
     within(search).getByRole('spinbutton', {
       name: 'Longest log time range (days)',
+    })
+  ).toBeVisible()
+  const bodyRecording = screen.getByRole('group', { name: 'Body Recording' })
+  expect(
+    within(bodyRecording).getByRole('switch', {
+      name: 'Record request & response bodies',
+    })
+  ).toBeVisible()
+  expect(
+    within(bodyRecording).getByRole('spinbutton', {
+      name: 'Maximum recorded body size (bytes)',
     })
   ).toBeVisible()
   const cleanup = screen.getByRole('group', { name: 'Clean history logs' })

@@ -45,6 +45,11 @@ const usageLogsSearchSchema = z.object({
   username: z.string().optional().catch(''),
   requestId: z.string().optional().catch(''),
   upstreamRequestId: z.string().optional().catch(''),
+  reqBody: z.string().optional().catch(''),
+  respBody: z.string().optional().catch(''),
+  // Deep link from the body viewer's share link: opens the recorded bodies
+  // for requestId without requiring the row to be in the current list.
+  viewBody: z.string().optional().catch(''),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
 })

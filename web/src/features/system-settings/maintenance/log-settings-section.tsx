@@ -53,6 +53,8 @@ const logSettingsSchema = z.object({
   log_setting: z.object({
     user_export_enabled: z.boolean(),
     max_range_days: z.number().int().min(1),
+    record_body_enabled: z.boolean(),
+    record_body_max_bytes: z.number().int().min(1),
   }),
 })
 
@@ -63,6 +65,8 @@ type LogSettingsSectionProps = {
     LogConsumeEnabled: boolean
     'log_setting.user_export_enabled': boolean
     'log_setting.max_range_days': number
+    'log_setting.record_body_enabled': boolean
+    'log_setting.record_body_max_bytes': number
   }
 }
 
@@ -71,6 +75,7 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
   const updateOption = useUpdateOption()
   const recordingTitleId = useId()
   const searchTitleId = useId()
+  const bodyRecordingTitleId = useId()
   const formDefaults = useMemo<LogSettingsFormValues>(
     () => ({
       LogConsumeEnabled: props.defaultValues.LogConsumeEnabled,
@@ -78,6 +83,10 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
         user_export_enabled:
           props.defaultValues['log_setting.user_export_enabled'],
         max_range_days: props.defaultValues['log_setting.max_range_days'],
+        record_body_enabled:
+          props.defaultValues['log_setting.record_body_enabled'],
+        record_body_max_bytes:
+          props.defaultValues['log_setting.record_body_max_bytes'],
       },
     }),
     [props.defaultValues]
@@ -99,6 +108,14 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
         values.log_setting.user_export_enabled,
       ],
       ['log_setting.max_range_days', values.log_setting.max_range_days],
+      [
+        'log_setting.record_body_enabled',
+        values.log_setting.record_body_enabled,
+      ],
+      [
+        'log_setting.record_body_max_bytes',
+        values.log_setting.record_body_max_bytes,
+      ],
     ] as const
     for (const [key, value] of changes) {
       if (value === props.defaultValues[key]) continue
@@ -206,6 +223,66 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
                 )}
               />
             </SettingsFormGrid>
+          </div>
+
+          <Separator />
+
+          <div
+            role='group'
+            aria-labelledby={bodyRecordingTitleId}
+            className='flex min-w-0 flex-col gap-4'
+          >
+            <h4 id={bodyRecordingTitleId} className='font-medium'>
+              {t('Body Recording')}
+            </h4>
+            <FormField
+              control={form.control}
+              name='log_setting.record_body_enabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Record request & response bodies')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Master switch for storing the full request and response content of relay traffic. Recording also requires the per-token switch, and stored bodies may contain private data.'
+                      )}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </SettingsSwitchItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='log_setting.record_body_max_bytes'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('Maximum recorded body size (bytes)')}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'A request or response body larger than this limit is not recorded at all (it is never truncated).'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
         </SettingsForm>
       </Form>

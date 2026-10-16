@@ -27,6 +27,8 @@ import { CacheStatsDialog } from '@/features/system-settings/general/channel-aff
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
 
 import { UserInfoDialog } from './components/dialogs/user-info-dialog'
+import { RequestBodyDialog } from './components/dialogs/request-body-dialog'
+import { RequestBodiesBrowser } from './components/request-bodies-browser'
 import {
   type LogsViewScope,
   UsageLogsProvider,
@@ -41,7 +43,7 @@ import {
 } from './section-registry'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
-const TASK_LOG_SECTIONS = ['drawing', 'task'] as const
+const SWITCHABLE_SECTIONS = ['drawing', 'task', 'bodies'] as const
 
 const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   common: {
@@ -53,16 +55,34 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   task: {
     titleKey: 'Task Logs',
   },
+  bodies: {
+    titleKey: 'Request Bodies',
+  },
 }
 
 function UsageLogsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const params = route.useParams()
+  const search = route.useSearch()
   const activeCategory: UsageLogsSectionId =
     params.section && isUsageLogsSectionId(params.section)
       ? params.section
       : USAGE_LOGS_DEFAULT_SECTION
+
+  // Deep link (?requestId=…&viewBody=1, produced by the body viewer's share
+  // link): open the recorded bodies directly, without needing the row to be
+  // on the current page.
+  const deepLinkedBodyRequestId =
+    search.requestId && search.viewBody ? search.requestId : ''
+  const closeDeepLinkedBody = useCallback(() => {
+    void navigate({
+      to: '/usage-logs/$section',
+      params: { section: activeCategory },
+      search: { ...search, viewBody: undefined },
+      replace: true,
+    })
+  }, [navigate, activeCategory, search])
   const {
     selectedUserId,
     userInfoDialogOpen,
@@ -71,18 +91,21 @@ function UsageLogsContent() {
     affinityDialogOpen,
     setAffinityDialogOpen,
   } = useUsageLogsContext()
-  const { canManageScope, viewScope, setViewScope } = useLogsViewScope()
+  const { canManageScope, isAdminView, viewScope, setViewScope } =
+    useLogsViewScope()
   const tabNavGroups = useMemo<NavGroup[]>(
     () => [
       {
         title: 'Task Logs',
-        items: TASK_LOG_SECTIONS.map((section) => ({
+        items: SWITCHABLE_SECTIONS.filter(
+          (section) => isAdminView || section !== 'bodies'
+        ).map((section) => ({
           title: SECTION_META[section].titleKey,
           url: `/usage-logs/${section}`,
         })),
       },
     ],
-    []
+    [isAdminView]
   )
   const filteredTabGroups = useSidebarConfig(tabNavGroups)
   const visibleSections = useMemo(
@@ -118,7 +141,7 @@ function UsageLogsContent() {
   )
 
   const pageMeta =
-    activeCategory === 'common' ? SECTION_META.common : SECTION_META.task
+    activeCategory === 'common' ? SECTION_META.common : SECTION_META[activeCategory]
   const showTaskSwitcher =
     activeCategory !== 'common' && visibleSections.length > 1
 
@@ -152,7 +175,11 @@ function UsageLogsContent() {
               </Tabs>
             )}
             <div className='min-h-0 flex-1'>
-              <UsageLogsTable logCategory={activeCategory} />
+              {activeCategory === 'bodies' ? (
+                <RequestBodiesBrowser />
+              ) : (
+                <UsageLogsTable logCategory={activeCategory} />
+              )}
             </div>
           </div>
         </SectionPageLayout.Content>
@@ -163,6 +190,16 @@ function UsageLogsContent() {
         open={userInfoDialogOpen}
         onOpenChange={setUserInfoDialogOpen}
       />
+
+      {deepLinkedBodyRequestId !== '' && (
+        <RequestBodyDialog
+          requestId={deepLinkedBodyRequestId}
+          open
+          onOpenChange={(open) => {
+            if (!open) closeDeepLinkedBody()
+          }}
+        />
+      )}
 
       <CacheStatsDialog
         open={affinityDialogOpen}
