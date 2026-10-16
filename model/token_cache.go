@@ -75,7 +75,7 @@ redis.call('HSET', KEYS[1],
   'UnlimitedQuota', ARGV[8], 'ModelLimitsEnabled', ARGV[9], 'ModelLimits', ARGV[10],
   'AllowIps', ARGV[11], 'Group', ARGV[12], 'CrossGroupRetry', ARGV[13],
   'AutoGroups', ARGV[14], 'RemainQuota', ARGV[15], 'UsedQuota', ARGV[16],
-  'AllowUserQuotaQuery', ARGV[17])
+  'AllowUserQuotaQuery', ARGV[17], 'RecordBodies', ARGV[19])
 redis.call('EXPIRE', KEYS[1], ARGV[18])
 return 1`
 
@@ -87,8 +87,8 @@ return 1`
 		strconv.FormatBool(token.UnlimitedQuota), strconv.FormatBool(token.ModelLimitsEnabled),
 		token.ModelLimits, allowIps, token.Group, strconv.FormatBool(token.CrossGroupRetry),
 		token.AutoGroups, token.RemainQuota, token.UsedQuota,
-		strconv.FormatBool(token.AllowUserQuotaQuery),
-		tokenCacheTTLSeconds(),
+		strconv.FormatBool(token.AllowUserQuotaQuery), tokenCacheTTLSeconds(),
+		strconv.FormatBool(token.RecordBodies),
 	).Int()
 }
 

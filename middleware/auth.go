@@ -679,6 +679,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	c.Set("token_key", token.Key)
 	c.Set("token_name", token.Name)
 	c.Set("token_unlimited_quota", token.UnlimitedQuota)
+	common.SetContextKey(c, constant.ContextKeyTokenRecordBodies, token.RecordBodies)
 	if !token.UnlimitedQuota {
 		c.Set("token_quota", token.RemainQuota)
 	}

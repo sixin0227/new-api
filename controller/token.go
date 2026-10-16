@@ -37,6 +37,9 @@ type tokenRequest struct {
 	AutoGroups tokenAutoGroupsInput `json:"auto_groups"`
 	// 指针区分“未传”和显式 false：新建时未传即开启，更新时未传则保留原值。
 	AllowUserQuotaQuery *bool `json:"allow_user_quota_query"`
+	// RecordBodies 指针区分“未传”和显式 false：更新时未传保持原值，
+	// 防止普通编辑动作意外关闭正文记录。
+	RecordBodies *bool `json:"record_bodies"`
 }
 
 type tokenResponse struct {
@@ -364,6 +367,7 @@ func AddToken(c *gin.Context) {
 		AutoGroups:         token.AutoGroups,
 	}
 	cleanToken.AllowUserQuotaQuery = request.AllowUserQuotaQuery == nil || *request.AllowUserQuotaQuery
+	cleanToken.RecordBodies = request.RecordBodies != nil && *request.RecordBodies
 	err = cleanToken.Insert()
 	if err != nil {
 		common.ApiError(c, err)
@@ -459,6 +463,9 @@ func UpdateToken(c *gin.Context) {
 		if request.AllowUserQuotaQuery != nil {
 			cleanToken.AllowUserQuotaQuery = *request.AllowUserQuotaQuery
 		}
+		if request.RecordBodies != nil {
+			cleanToken.RecordBodies = *request.RecordBodies
+		}
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 		if token.Group != "auto" {
@@ -493,6 +500,7 @@ func UpdateToken(c *gin.Context) {
 			{"allow_ips", (previous.AllowIps == nil) != (cleanToken.AllowIps == nil) ||
 				(previous.AllowIps != nil && cleanToken.AllowIps != nil && *previous.AllowIps != *cleanToken.AllowIps)},
 			{"allow_user_quota_query", previous.AllowUserQuotaQuery != cleanToken.AllowUserQuotaQuery},
+			{"record_bodies", previous.RecordBodies != cleanToken.RecordBodies},
 			{"group", previous.Group != cleanToken.Group},
 			{"cross_group_retry", previous.CrossGroupRetry != cleanToken.CrossGroupRetry},
 			{"auto_groups", previous.AutoGroups != cleanToken.AutoGroups},

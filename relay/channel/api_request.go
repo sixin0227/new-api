@@ -574,6 +574,11 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	if resp == nil {
 		return nil, errors.New("resp is nil")
 	}
+
+	// Tee the JSON/SSE response body into the request's BodyRecord before any
+	// handler consumes it, so success and error bodies are recorded alike.
+	resp.Body = common2.TeeResponseBody(c, resp.Body, resp.Header.Get("Content-Type"))
+
 	if common2.DebugEnabled {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
 		logger.LogDebug(c, "http transport negotiated: host=%s protocol=%s shards=%d policy=%s negotiated=%s",

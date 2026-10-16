@@ -154,6 +154,19 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		RequestPath: c.Request.URL.Path,
 		Retry:       common.GetPointer(0),
 	}
+
+	logSetting := operation_setting.GetLogSetting()
+	if logSetting.RecordBodyEnabled && common.GetContextKeyBool(c, constant.ContextKeyTokenRecordBodies) {
+		recordFormat := ""
+		switch relayFormat {
+		case types.RelayFormatOpenAI:
+			recordFormat = "openai"
+		case types.RelayFormatClaude:
+			recordFormat = "claude"
+		}
+		common.SetBodyRecord(c, common.NewBodyRecord(logSetting.RecordBodyMaxBytes, recordFormat))
+	}
+
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
@@ -185,6 +198,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
+
+		if br := common.GetBodyRecord(c); br != nil {
+			br.ResetResponse()
+			br.SnapshotRequest(bodyStorage)
+		}
 
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:

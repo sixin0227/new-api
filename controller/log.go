@@ -32,8 +32,24 @@ func logFilterFromQuery(c *gin.Context, admin bool) model.LogFilter {
 	if admin {
 		filter.Username = c.Query("username")
 		filter.Channel, _ = strconv.Atoi(c.Query("channel"))
+		// Body search is administrator-only; bodies are private content.
+		filter.ReqBodyContains = c.Query("req_body_contains")
+		filter.RespBodyContains = c.Query("resp_body_contains")
 	}
 	return filter
+}
+
+// requireBodySearchRange keeps body substring search bounded: without an
+// explicit time window the request_bodies LIKE scan would walk the whole
+// table, which is pathologically slow on large log databases.
+func requireBodySearchRange(filter model.LogFilter) error {
+	if filter.ReqBodyContains == "" && filter.RespBodyContains == "" {
+		return nil
+	}
+	if filter.StartTimestamp == 0 || filter.EndTimestamp == 0 {
+		return common.NewMessage("Body search requires a time range")
+	}
+	return nil
 }
 
 // limitLogTimeRange returns the start of a log or dashboard search kept within
@@ -56,7 +72,12 @@ func limitLogTimeRange(startTimestamp int64, endTimestamp int64) (int64, error) 
 
 func GetAllLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	logs, total, err := model.GetAllLogs(logFilterFromQuery(c, true), pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	filter := logFilterFromQuery(c, true)
+	if err := requireBodySearchRange(filter); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	logs, total, err := model.GetAllLogs(filter, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -260,4 +281,146 @@ func GetLogsSelfStat(c *gin.Context) {
 		},
 	})
 	return
+}
+
+// GetRequestBody returns the recorded request/response bodies of one relay
+// exchange. Bodies are private conversation content, so both this endpoint and
+// the body search stay administrator-only (docs/adr/0003-opt-in-body-recording.md).
+func GetRequestBody(c *gin.Context) {
+	requestId := c.Query("request_id")
+	if requestId == "" {
+		common.ApiErrorT(c, "request_id is required")
+		return
+	}
+	body, err := model.GetRequestBodyByRequestId(requestId)
+	if err != nil {
+		common.ApiErrorT(c, "Failed to query request bodies")
+		return
+	}
+	common.ApiSuccess(c, body)
+}
+
+// logBatchDeleteLimit caps one bulk deletion so a single request cannot sweep
+// the whole log table through the UI.
+const logBatchDeleteLimit = 200
+
+// DeleteLogsBatch removes whole usage-log entries (metadata row and recorded
+// bodies together) by log id.
+func DeleteLogsBatch(c *gin.Context) {
+	request := struct {
+		Ids []int `json:"ids"`
+	}{}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if len(request.Ids) == 0 || len(request.Ids) > logBatchDeleteLimit {
+		common.ApiErrorT(c, "Select between 1 and {{max}} logs to delete", map[string]any{"max": logBatchDeleteLimit})
+		return
+	}
+	deleted, err := model.DeleteLogsAndBodies(request.Ids)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"deleted": deleted})
+}
+
+// requestBodyBatchLimit caps one export or deletion so a single request
+// cannot sweep or dump the whole body table.
+const requestBodyBatchLimit = 100
+
+// GetRequestBodiesList lists recorded request/response bodies for the body
+// browser. It returns write-time summaries only, never the full bodies.
+func GetRequestBodiesList(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	userId, _ := strconv.Atoi(c.Query("user_id"))
+	filter := model.RequestBodyFilter{
+		StartTimestamp: startTimestamp,
+		EndTimestamp:   endTimestamp,
+		Contains:       c.Query("contains"),
+		UserId:         userId,
+	}
+	items, total, err := model.GetRequestBodyList(filter, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func requestIdsFromBody(c *gin.Context) ([]string, bool) {
+	request := struct {
+		RequestIds []string `json:"request_ids"`
+	}{}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiError(c, err)
+		return nil, false
+	}
+	if len(request.RequestIds) == 0 || len(request.RequestIds) > requestBodyBatchLimit {
+		common.ApiErrorT(c, "Select between 1 and {{max}} records", map[string]any{"max": requestBodyBatchLimit})
+		return nil, false
+	}
+	return request.RequestIds, true
+}
+
+// ExportRequestBodies returns the full recorded bodies for the selected
+// exchanges so administrators can save them as a file.
+func ExportRequestBodies(c *gin.Context) {
+	requestIds, ok := requestIdsFromBody(c)
+	if !ok {
+		return
+	}
+	items, err := model.GetRequestBodiesByRequestIds(requestIds)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"items": items})
+}
+
+// DeleteRequestBodies removes the selected exchanges: the body rows and
+// their usage-log rows together.
+func DeleteRequestBodies(c *gin.Context) {
+	requestIds, ok := requestIdsFromBody(c)
+	if !ok {
+		return
+	}
+	deleted, err := model.DeleteRequestBodiesByRequestIds(requestIds)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"deleted": deleted})
+}
+
+// DeleteAllRequestBodies removes every recorded exchange matching the browse
+// filters — the body rows and their usage-log rows together — swept in
+// server-side batches so one request can clear the whole filtered set.
+func DeleteAllRequestBodies(c *gin.Context) {
+	request := struct {
+		Contains       string `json:"contains"`
+		UserId         int    `json:"user_id"`
+		StartTimestamp int64  `json:"start_timestamp"`
+		EndTimestamp   int64  `json:"end_timestamp"`
+	}{}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	deleted, err := model.DeleteAllRequestBodiesByFilter(model.RequestBodyFilter{
+		StartTimestamp: request.StartTimestamp,
+		EndTimestamp:   request.EndTimestamp,
+		Contains:       request.Contains,
+		UserId:         request.UserId,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"deleted": deleted})
 }

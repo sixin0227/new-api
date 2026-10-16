@@ -12,6 +12,7 @@ const (
 
 	/* token related keys */
 	ContextKeyTokenUnlimited         ContextKey = "token_unlimited_quota"
+	ContextKeyTokenRecordBodies      ContextKey = "token_record_bodies"
 	ContextKeyTokenKey               ContextKey = "token_key"
 	ContextKeyTokenId                ContextKey = "token_id"
 	ContextKeyTokenGroup             ContextKey = "token_group"
